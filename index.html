@@ -1,4 +1,4 @@
-<!-- v2.6 -->
+<!-- v2.7 -->
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -16,9 +16,9 @@
 <body>
 
 <div class="card">
-    <div id="app-version" style="font-size: 12px; color: #666; padding: 4px 8px; background: #f0f0f0; margin-bottom: 12px; border-radius: 4px;">Arayüz Sürümü: v2.6</div>
+    <div id="app-version" style="font-size: 12px; color: #666; padding: 4px 8px; background: #f0f0f0; margin-bottom: 12px; border-radius: 4px;">Arayüz Sürümü: v2.7</div>
     <h2>BLE Sensör Takip</h2>
-    <button onclick="connectAndReadGATT()">Cihaza Bağlan (GATT)</button>
+    <button onclick="connectAndReadGATT()">Tüm Cihazları Listele</button>
     
     <div class="metric">Sıcaklık: <span id="temp">--</span></div>
     <div class="metric">Nem: <span id="humidity">--</span></div>
@@ -28,13 +28,13 @@
 <script>
 async function connectAndReadGATT() {
     try {
-        console.log('v2.6 - Cihaz aranıyor...');
+        console.log('v2.7 - Tüm Bluetooth cihazları taranıyor...');
         const device = await navigator.bluetooth.requestDevice({
-            filters: [{ namePrefix: 'ATC' }, { namePrefix: 'LYWSD' }],
+            acceptAllDevices: true,
             optionalServices: ['ebe0ccc0-75a3-4f51-9f8e-d9036c6460fa']
         });
 
-        console.log('v2.6 - Cihaza bağlanılıyor:', device.name);
+        console.log('v2.7 - Seçilen cihaz:', device.name);
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService('ebe0ccc0-75a3-4f51-9f8e-d9036c6460fa');
         const characteristic = await service.getCharacteristic('ebe0ccc1-75a3-4f51-9f8e-d9036c6460fa');
@@ -43,28 +43,26 @@ async function connectAndReadGATT() {
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             const value = event.target.value;
             
-            // ATC custom firmware GATT formatı kontrolü (genellikle 5+ bayt)
             if (value.byteLength >= 5) {
                 const temperature = value.getInt16(0, true) / 100;
                 const humidity = value.getUint8(2);
                 const battery = value.getUint8(3);
 
-                console.log(`[v2.6 GATT] Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
+                console.log(`[v2.7 GATT] Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
                 
                 document.getElementById('temp').innerText = `${temperature} °C`;
                 document.getElementById('humidity').innerText = `% ${humidity}`;
                 document.getElementById('battery').innerText = `% ${battery}`;
             } else if (value.byteLength === 1) {
-                // Tek bayt gelmesi durumunda pil yüzdesi olarak değerlendirme
                 const battery = value.getUint8(0);
-                console.log(`[v2.6 GATT] Tek bayt veri (Pil): %${battery}`);
+                console.log(`[v2.7 GATT] Tek bayt veri (Pil): %${battery}`);
                 document.getElementById('battery').innerText = `% ${battery}`;
             }
         });
 
-        console.log('v2.6 - Bildirimler başlatıldı.');
+        console.log('v2.7 - Bildirimler başlatıldı.');
     } catch (error) {
-        console.error('v2.6 - Bağlantı hatası:', error);
+        console.error('v2.7 - Bağlantı hatası:', error);
     }
 }
 </script>
