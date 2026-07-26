@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Edge Gateway - Sensör Veri Toplama Merkezi</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h2 {
+            font-size: 1.2rem;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .data-card {
+            background: #eef2f5;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 10px 0;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2980b9;
+        }
+        .data-label {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            text-transform: uppercase;
+            display: block;
+            margin-bottom: 5px;
+        }
+        button {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        button:active {
+            background-color: #2ecc71;
+        }
+        button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+        #status {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #e67e22;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>BLE Çevresel Veri Okuma ve Bulut Aktarımı</h2>
+    
+    <div class="data-card">
+        <span class="data-label">Sıcaklık</span>
+        <span id="tempValue">--</span> °C
+    </div>
+    
+    <div class="data-card">
+        <span class="data-label">Nem Oranı</span>
+        <span id="humValue">--</span> %
+    </div>
+
+    <button id="connectBtn">Sensöre Bağlan</button>
+    <div id="status">Sistem hazır. Bağlantı bekleniyor...</div>
+</div>
+
+<script>
+    // GATT Servis ve Karakteristik UUID'leri (Environmental Sensing Standardı)
+    const ENV_SENSING_SERVICE = 0x181A;
+    const TEMP_CHARACTERISTIC = 0x2A6E;
+    const HUM_CHARACTERISTIC = 0x2A6F;
+
+    // Bulut Sunucusu REST API Uç Noktası (Projeye göre güncellenecektir)
+    const CLOUD_ENDPOINT = "https://api.ornek-sunucu.com/veri-toplama";
+
+    const connectBtn = document.getElementById('connectBtn');
+    const tempValueEl = document.getElementById('tempValue');
+    const humValueEl = document.getElementById('humValue');
+    const statusEl = document.getElementById('status');
+
+    let latestTemp = null;
+    let latestHum = null;
+
+    connectBtn.addEventListener('click', async () => {
+        try {
+            statusEl.innerText = "Cihaz aranıyor...";
+            connectBtn.disabled = true;
+
+            // Cihaz tarama ve eşleştirme
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ services: [ENV_SENSING_SERVICE] }],
+                optionalServices: [ENV_SENSING_SERVICE]
+            });
+
+            statusEl.innerText = "Bağlanılıyor: " + device.name;
+
+            // GATT Sunucusuna bağlanma
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(ENV_SENSING_SERVICE);
+
+            statusEl.innerText = "Servislere erişildi. Veri akışı başlatılıyor...";
+
+            // Sıcaklık Karakteristiğine Abone Olma
+            const tempChar = await service.getCharacteristic(TEMP_CHARACTERISTIC);
+            await tempChar.startNotifications();
+            tempChar.addEventListener('characteristicvaluechanged', handleTempChange);
+
+            // Nem Karakteristiğine Abone Olma
+            const humChar = await service.getCharacteristic(HUM_CHARACTERISTIC);
+            await humChar.startNotifications();
+            humChar.addEventListener('characteristicvaluechanged', handleHumChange);
+
+            statusEl.innerText = "Sensör verisi okunuyor ve buluta iletiliyor.";
+            statusEl.style.color = "#27ae60";
+
+            device.addEventListener('gattserverdisconnected', onDisconnected);
+
+        } catch (error) {
+            console.error(error);
+            statusEl.innerText = "Bağlantı hatası: " + error.message;
+            statusEl.style.color = "#c0392b";
+            connectBtn.disabled = false;
+        }
+    });
+
+    // Sıcaklık Verisini Ayrıştırma (Resolution: 0.01 °C)
+    function handleTempChange(event) {
+        const data = event.target.value;
+        const rawValue = data.getInt16(0, true); 
+        latestTemp = Number((rawValue / 100).toFixed(2));
+        tempValueEl.innerText = latestTemp;
+        triggerCloudSync();
+    }
+
+    // Nem Verisini Ayrıştırma (Resolution: 0.01 %)
+    function handleHumChange(event) {
+        const data = event.target.value;
+        const rawValue = data.getUint16(0, true);
+        latestHum = Number((rawValue / 100).toFixed(2));
+        humValueEl.innerText = latestHum;
+        triggerCloudSync();
+    }
+
+    // Her iki veri de güncellendiğinde buluta gönderim sağlayan mantık
+    function triggerCloudSync() {
+        if (latestTemp !== null && latestHum !== null) {
+            sendDataToCloud(latestTemp, latestHum);
+            // Sonraki okuma döngüsü için değerleri sıfırlayarak çift gönderimi engelle
+            latestTemp = null; 
+            latestHum = null;
+        }
+    }
+
+    // Fetch API ile Buluta JSON Formatında Veri Gönderimi
+    async function sendDataToCloud(temperature, humidity) {
+        const payload = {
+            timestamp: Date.now(),
+            sensorType: "LYWSD03MMC",
+            data: {
+                temperature_celsius: temperature,
+                humidity_percent: humidity
+            }
+        };
+
+        try {
+            // İleride kendi sunucunuzu hazırladığınızda bu satır aktif edilecektir.
+            /*
+            const response = await fetch(CLOUD_ENDPOINT, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(payload)
+            });
+            */
+            console.log("Buluta iletilen veri paketi:", JSON.stringify(payload));
+        } catch (error) {
+            console.error("Bulut gönderim hatası:", error);
+        }
+    }
+
+    function onDisconnected() {
+        statusEl.innerText = "Cihaz bağlantısı koptu. Lütfen tekrar bağlanın.";
+        statusEl.style.color = "#c0392b";
+        connectBtn.disabled = false;
+    }
+</script>
+
+</body>
+</html>
