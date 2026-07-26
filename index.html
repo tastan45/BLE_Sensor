@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE IoT Gateway - v1.8</title>
+    <title>BLE IoT Gateway - v1.9</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,24 +15,35 @@
             padding: 15px 30px;
             font-size: 18px;
             cursor: pointer;
-            background-color: #d9534f;
+            background-color: #007bff;
             color: white;
             border: none;
             border-radius: 5px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         button:hover {
-            background-color: #c9302c;
+            background-color: #0056b3;
         }
         .version-box {
             font-size: 16px;
             color: #fff;
-            background-color: #333;
+            background-color: #28a745;
             padding: 6px 12px;
             border-radius: 4px;
             display: inline-block;
             margin-bottom: 20px;
             font-weight: bold;
+        }
+        #changelog {
+            margin: 20px auto;
+            width: 80%;
+            max-width: 600px;
+            background: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: left;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 14px;
         }
         #status {
             margin-top: 20px;
@@ -50,9 +61,17 @@
 </head>
 <body>
 
-    <div class="version-box">Arayüz Sürümü: v1.8</div>
+    <div class="version-box">Arayüz Sürümü: v1.9</div>
     <h2>Xiaomi LYWSD03MMC (ATC) Gateway</h2>
-    <p>Doğrudan Servis ve Karakteristik Indeksleme</p>
+    
+    <div id="changelog">
+        <strong>v1.8'e Göre Değişiklikler:</strong>
+        <ul>
+            <li>Karakteristik kontrol döngüsü tamamen kaldırıldı; direkt olarak <code>server.getPrimaryServices()</code> üzerinden gelen ilk servisin altındaki bütün karakteristikler sırayla diziye atılıp ilk sıradaki zorla seçilecek şekilde basitleştirildi.</li>
+            <li>"Uygun karakteristik bulunamadı" hatasının tetiklendiği kontrol blokları temizlendi.</li>
+            <li>Arayüze yapılan değişikliklerin anlık takip edilebilmesi için bu Değişiklik Günlüğü (Changelog) paneli eklendi.</li>
+        </ul>
+    </div>
     
     <button onclick="connectAndRead()">Sensöre Bağlan ve Veri Al</button>
     <div id="status">Bağlantı bekleniyor...</div>
@@ -64,7 +83,7 @@
             const dataDiv = document.getElementById("data");
 
             try {
-                statusDiv.innerText = "v1.8: Cihaz taranıyor...";
+                statusDiv.innerText = "v1.9: Cihaz taranıyor...";
 
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
@@ -76,7 +95,7 @@
                     ]
                 });
 
-                statusDiv.innerText = "v1.8: Bağlantı kuruluyor...";
+                statusDiv.innerText = "v1.9: Bağlantı kuruluyor...";
                 
                 let server;
                 for (let i = 1; i <= 3; i++) {
@@ -90,44 +109,23 @@
                     }
                 }
 
-                statusDiv.innerText = "v1.8: Tüm servisler okunuyor...";
+                statusDiv.innerText = "v1.9: Servisler okunuyor...";
                 const services = await server.getPrimaryServices();
                 
-                let validChar = null;
-
-                for (let service of services) {
-                    try {
-                        const chars = await service.getCharacteristics();
-                        for (let char of chars) {
-                            console.log("UUID:", char.uuid, "Props:", char.properties);
-                            if (char.properties.notify || char.properties.indicate || char.properties.read) {
-                                validChar = char;
-                                break;
-                            }
-                        }
-                    } catch (err) {
-                        console.warn("Servis okunamadı:", service.uuid);
-                    }
-                    if (validChar) break;
+                if (services.length === 0) {
+                    throw new Error("v1.9: Cihaz hiçbir servis döndürmedi.");
                 }
 
-                // Eğer yukarıdaki döngüde yakalanamazsa, ilk servisin ilk karakteristiğini zorla al
-                if (!validChar && services.length > 0) {
-                    try {
-                        const fallbackChars = await services[0].getCharacteristics();
-                        if (fallbackChars.length > 0) {
-                            validChar = fallbackChars[0];
-                        }
-                    } catch (e) {
-                        console.error("Fallback hata:", e);
-                    }
+                // Doğrudan ilk servisin altındaki karakteristikleri listele
+                const chars = await services[0].getCharacteristics();
+                
+                if (chars.length === 0) {
+                    throw new Error("v1.9: İlk servis altında karakteristik bulunamadı.");
                 }
 
-                if (!validChar) {
-                    throw new Error("v1.8: Cihaz GATT tablosu boş veya erişilemiyor.");
-                }
+                let validChar = chars[0]; // Doğrudan ilk karakteristiği zorla seç
 
-                statusDiv.innerText = "v1.8: Veri akışı dinleniyor...";
+                statusDiv.innerText = "v1.9: Veri akışı dinleniyor...";
 
                 validChar.addEventListener('characteristicvaluechanged', (event) => {
                     parsePayload(event.target.value, statusDiv, dataDiv);
@@ -136,14 +134,14 @@
                 try {
                     await validChar.startNotifications();
                 } catch (err) {
-                    console.log("v1.8: Bildirim açılamadı, okuma yapılıyor...");
+                    console.log("v1.9: Bildirim açılamadı, okuma yapılıyor...");
                 }
 
                 const initialValue = await validChar.readValue();
                 parsePayload(initialValue, statusDiv, dataDiv);
 
             } catch (error) {
-                statusDiv.innerText = "v1.8 Hata: " + error.message;
+                statusDiv.innerText = "v1.9 Hata: " + error.message;
                 console.error(error);
             }
         }
@@ -155,14 +153,14 @@
                     const hum = value.getUint8(2);
                     const batt = value.getUint8(3);
 
-                    statusDiv.innerText = "v1.8: Veri Akışı Başarılı!";
+                    statusDiv.innerText = "v1.9: Veri Akışı Başarılı!";
                     dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
                 } else {
-                    statusDiv.innerText = "v1.8: Ham Veri Alındı";
+                    statusDiv.innerText = "v1.9: Ham Veri Alındı";
                     dataDiv.innerHTML = `Boyut: ${value.byteLength} bayt, Hex: ${Array.from(new Uint8Array(value.buffer)).map(b => ('0' + b.toString(16)).slice(-2)).join(' ')}`;
                 }
             } catch (e) {
-                statusDiv.innerText = "v1.8: Veri çözümlenemedi.";
+                statusDiv.innerText = "v1.9: Veri çözümlenemedi.";
             }
         }
     </script>
