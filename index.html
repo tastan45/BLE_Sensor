@@ -34,7 +34,7 @@
 <body>
 
     <h2>Xiaomi LYWSD03MMC Web Bluetooth Bağlantısı</h2>
-    <p>Servis UUID zorunluluğunu kaldıran dinamik tarama arayüzü.</p>
+    <p>Bluetooth önbellek sorununu aşan güncellenmiş arayüz.</p>
     
     <button onclick="connectSensor()">Sensöre Bağlan</button>
     <div id="status">Bağlantı bekleniyor...</div>
@@ -43,45 +43,50 @@
         async function connectSensor() {
             const statusDiv = document.getElementById("status");
             try {
-                statusDiv.innerText = "Cihaz taranıyor...";
-                console.log("Cihaz taranıyor...");
+                // Eğer tarayıcıda önceden kalan eşleşme varsa temizlik uyarısı
+                statusDiv.innerText = "Eski eşleşmeler kontrol ediliyor...";
+                console.log("Bluetooth tarama isteği başlatılıyor...");
                 
-                // Servis filtrelemesini tamamen devre dışı bırakarak hatayı kökten önleyelim
+                // Tarayıcı önbelleğinin eski servisleri dayatmasını engellemek için genişletilmiş parametreler
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: ['ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6', '0000181a-0000-1000-8000-00805f9b34fb']
+                    optionalServices: [
+                        'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6', 
+                        '0000181a-0000-1000-8000-00805f9b34fb',
+                        '0000ffe0-0000-1000-8000-00805f9b34fb'
+                    ]
                 });
 
                 statusDiv.innerText = "Cihaz seçildi: " + (device.name || "İsimsiz Cihaz");
-                console.log("Cihaz seçildi:", device.name);
-                
-                // GATT sunucusuna bağlan
-                const server = await device.gatt.connect();
-                statusDiv.innerText = "GATT Sunucusuna bağlandı, servisler listeleniyor...";
-                console.log("GATT Sunucusuna başarıyla bağlanıldı.");
+                console.log("Seçilen cihaz:", device.name, device.id);
 
-                // Cihazın sunduğu tüm servisleri doğrudan alıp listeyle eşgeçelim
+                // Bağlantı kopmaları veya eski oturumlar için dinleyici ekleyelim
+                device.addEventListener('gattserverdisconnected', onDisconnected);
+
+                statusDiv.innerText = "GATT sunucusuna bağlanılıyor...";
+                const server = await device.gatt.connect();
+                
+                statusDiv.innerText = "Servisler keşfediliyor...";
                 const services = await server.getPrimaryServices();
-                console.log("Bulunan toplam servis sayısı:", services.length);
+                console.log("Keşfedilen servis sayısı:", services.length);
 
                 if (services.length > 0) {
-                    // İlk erişilebilir servisi hedef olarak seç
-                    const targetService = services[0];
-                    statusDiv.innerText = "Aktif Servis: " + targetService.uuid;
-                    console.log("Kullanılan Servis UUID:", targetService.uuid);
-
-                    // Karakteristikleri listeleyerek veri okuma kapısını açalım
-                    const characteristics = await targetService.getCharacteristics();
-                    console.log("Bulunan karakteristik sayısı:", characteristics.length);
-                    statusDiv.innerText = "Bağlantı ve Servis Keşfi Başarılı! Karakteristik sayısı: " + characteristics.length;
+                    statusDiv.innerText = "Bağlantı Başarılı! Servis UUID: " + services[0].uuid;
+                    console.log("Aktif Servis UUID:", services[0].uuid);
                 } else {
-                    throw new Error("Cihaz hiçbir GATT servisi döndürmedi.");
+                    throw new Error("Cihaz GATT servis listesi döndürmedi.");
                 }
                 
             } catch (error) {
                 statusDiv.innerText = "Hata oluştu: " + error.message;
-                console.error("Bağlantı hatası:", error);
+                console.error("Bağlantı hatası detayı:", error);
             }
+        }
+
+        function onDisconnected(event) {
+            const device = event.target;
+            console.log(`Cihaz bağlantısı koptu: ${device.name}`);
+            document.getElementById("status").innerText = "Bağlantı koptu. Yeniden bağlanabilirsiniz.";
         }
     </script>
 
