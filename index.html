@@ -3,35 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE IoT Gateway - v1.7</title>
+    <title>BLE IoT Gateway - v1.8</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-            margin-top: 50px;
+            margin-top: 40px;
             background-color: #f4f4f9;
         }
         button {
             padding: 15px 30px;
             font-size: 18px;
             cursor: pointer;
-            background-color: #28a745;
+            background-color: #d9534f;
             color: white;
             border: none;
             border-radius: 5px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         button:hover {
-            background-color: #218838;
+            background-color: #c9302c;
         }
-        #version-badge {
-            font-size: 14px;
+        .version-box {
+            font-size: 16px;
             color: #fff;
-            background-color: #dc3545;
-            padding: 4px 10px;
+            background-color: #333;
+            padding: 6px 12px;
             border-radius: 4px;
             display: inline-block;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             font-weight: bold;
         }
         #status {
@@ -50,9 +50,9 @@
 </head>
 <body>
 
-    <div id="version-badge">Sürüm: v1.7</div>
+    <div class="version-box">Arayüz Sürümü: v1.8</div>
     <h2>Xiaomi LYWSD03MMC (ATC) Gateway</h2>
-    <p>Garantili Karakteristik ve Servis Eşleme</p>
+    <p>Doğrudan Servis ve Karakteristik Indeksleme</p>
     
     <button onclick="connectAndRead()">Sensöre Bağlan ve Veri Al</button>
     <div id="status">Bağlantı bekleniyor...</div>
@@ -64,20 +64,19 @@
             const dataDiv = document.getElementById("data");
 
             try {
-                statusDiv.innerText = "v1.7: Cihaz taranıyor...";
+                statusDiv.innerText = "v1.8: Cihaz taranıyor...";
 
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
                     optionalServices: [
                         'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6',
-                        '00001800-0000-1000-8000-00805f9b34fb',
-                        '00001801-0000-1000-8000-00805f9b34fb',
                         '0000181a-0000-1000-8000-00805f9b34fb',
+                        '0000180f-0000-1000-8000-00805f9b34fb',
                         '0000ffe0-0000-1000-8000-00805f9b34fb'
                     ]
                 });
 
-                statusDiv.innerText = "v1.7: Bağlantı kuruluyor...";
+                statusDiv.innerText = "v1.8: Bağlantı kuruluyor...";
                 
                 let server;
                 for (let i = 1; i <= 3; i++) {
@@ -91,69 +90,60 @@
                     }
                 }
 
-                statusDiv.innerText = "v1.7: Tüm servisler taranıyor...";
+                statusDiv.innerText = "v1.8: Tüm servisler okunuyor...";
+                const services = await server.getPrimaryServices();
                 
-                let targetChar = null;
+                let validChar = null;
 
-                // Yöntem 1: Doğrudan ATC özel servis UUID'sini dene
-                try {
-                    const atcService = await server.getPrimaryService('ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6');
-                    targetChar = await atcService.getCharacteristic('ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6');
-                } catch (e) {
-                    console.log("v1.7: ATC özel servisi doğrudan bulunamadı, genel taramaya geçiliyor...");
-                }
-
-                // Yöntem 2: Bulunamadıysa cihazdaki tüm servisleri ve karakteristikleri dolaş
-                if (!targetChar) {
-                    const services = await server.getPrimaryServices();
-                    for (let service of services) {
-                        try {
-                            const chars = await service.getCharacteristics();
-                            for (let char of chars) {
-                                if (char.properties.notify || char.properties.indicate || char.properties.read) {
-                                    targetChar = char;
-                                    break;
-                                }
+                for (let service of services) {
+                    try {
+                        const chars = await service.getCharacteristics();
+                        for (let char of chars) {
+                            console.log("UUID:", char.uuid, "Props:", char.properties);
+                            if (char.properties.notify || char.properties.indicate || char.properties.read) {
+                                validChar = char;
+                                break;
                             }
-                        } catch (err) {
-                            console.warn("Servis okunamadı:", service.uuid);
                         }
-                        if (targetChar) break;
+                    } catch (err) {
+                        console.warn("Servis okunamadı:", service.uuid);
+                    }
+                    if (validChar) break;
+                }
+
+                // Eğer yukarıdaki döngüde yakalanamazsa, ilk servisin ilk karakteristiğini zorla al
+                if (!validChar && services.length > 0) {
+                    try {
+                        const fallbackChars = await services[0].getCharacteristics();
+                        if (fallbackChars.length > 0) {
+                            validChar = fallbackChars[0];
+                        }
+                    } catch (e) {
+                        console.error("Fallback hata:", e);
                     }
                 }
 
-                // Yöntem 3: Hala bulunamadıysa ilk servisin ilk karakteristik zorla alınır
-                if (!targetChar) {
-                    const services = await server.getPrimaryServices();
-                    if (services.length > 0) {
-                        const chars = await services[0].getCharacteristics();
-                        if (chars.length > 0) {
-                            targetChar = chars[0];
-                        }
-                    }
+                if (!validChar) {
+                    throw new Error("v1.8: Cihaz GATT tablosu boş veya erişilemiyor.");
                 }
 
-                if (!targetChar) {
-                    throw new Error("v1.7: Kesin olarak hiçbir karakteristik çözülemedi.");
-                }
+                statusDiv.innerText = "v1.8: Veri akışı dinleniyor...";
 
-                statusDiv.innerText = "v1.7: Veri akışı dinleniyor...";
-
-                targetChar.addEventListener('characteristicvaluechanged', (event) => {
+                validChar.addEventListener('characteristicvaluechanged', (event) => {
                     parsePayload(event.target.value, statusDiv, dataDiv);
                 });
 
                 try {
-                    await targetChar.startNotifications();
+                    await validChar.startNotifications();
                 } catch (err) {
-                    console.log("v1.7: Bildirim başlatılamadı, manuel okuma deneniyor...");
+                    console.log("v1.8: Bildirim açılamadı, okuma yapılıyor...");
                 }
 
-                const initialValue = await targetChar.readValue();
+                const initialValue = await validChar.readValue();
                 parsePayload(initialValue, statusDiv, dataDiv);
 
             } catch (error) {
-                statusDiv.innerText = "v1.7 Hata: " + error.message;
+                statusDiv.innerText = "v1.8 Hata: " + error.message;
                 console.error(error);
             }
         }
@@ -165,14 +155,14 @@
                     const hum = value.getUint8(2);
                     const batt = value.getUint8(3);
 
-                    statusDiv.innerText = "v1.7: Veri Akışı Başarılı!";
+                    statusDiv.innerText = "v1.8: Veri Akışı Başarılı!";
                     dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
                 } else {
-                    statusDiv.innerText = "v1.7: Alternatif Veri Alındı";
-                    dataDiv.innerHTML = `Ham Boyut: ${value.byteLength} bayt, Hex: ${Array.from(new Uint8Array(value.buffer)).map(b => ('0' + b.toString(16)).slice(-2)).join(' ')}`;
+                    statusDiv.innerText = "v1.8: Ham Veri Alındı";
+                    dataDiv.innerHTML = `Boyut: ${value.byteLength} bayt, Hex: ${Array.from(new Uint8Array(value.buffer)).map(b => ('0' + b.toString(16)).slice(-2)).join(' ')}`;
                 }
             } catch (e) {
-                statusDiv.innerText = "v1.7: Veri çözümlenemedi.";
+                statusDiv.innerText = "v1.8: Veri çözümlenemedi.";
             }
         }
     </script>
