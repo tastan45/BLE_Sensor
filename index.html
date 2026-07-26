@@ -39,15 +39,15 @@
 <body>
 
     <h2>Xiaomi LYWSD03MMC Sensör Okuma</h2>
-    <p>Kesin ATC Servis Bağlantısı</p>
+    <p>Dinamik Servis Eşleme Arayüzü</p>
     
     <button onclick="connectSensor()">Sensöre Bağlan ve Oku</button>
     <div id="status">Bağlantı bekleniyor...</div>
     <div id="data"></div>
 
     <script>
-        const ATC_SERVICE_UUID = 'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6';
-        const ATC_DATA_CHAR_UUID = 'ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6';
+        const TARGET_SERVICE_UUID = 'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6';
+        const TARGET_CHAR_UUID = 'ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6';
 
         async function connectSensor() {
             const statusDiv = document.getElementById("status");
@@ -56,9 +56,16 @@
             try {
                 statusDiv.innerText = "Cihaz taranıyor...";
                 
+                // Android önbellek ve servis gizleme sorununu aşmak için kapsamlı optionalServices listesi
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: [ATC_SERVICE_UUID]
+                    optionalServices: [
+                        TARGET_SERVICE_UUID,
+                        '00001800-0000-1000-8000-00805f9b34fb',
+                        '00001801-0000-1000-8000-00805f9b34fb',
+                        '0000181a-0000-1000-8000-00805f9b34fb',
+                        '0000ffe0-0000-1000-8000-00805f9b34fb'
+                    ]
                 });
 
                 statusDiv.innerText = "Cihaz seçildi, bağlanılıyor...";
@@ -75,24 +82,63 @@
                     }
                 }
 
-                statusDiv.innerText = "ATC özel servisi aranıyor...";
-                const service = await server.getPrimaryService(ATC_SERVICE_UUID);
+                statusDiv.innerText = "Servisler taranıyor...";
+                const services = await server.getPrimaryServices();
                 
-                statusDiv.innerText = "Karakteristik okunuyor...";
-                const characteristic = await service.getCharacteristic(ATC_DATA_CHAR_UUID);
-                
-                await characteristic.startNotifications();
-                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                let targetService = null;
+                for (let service of services) {
+                    if (service.uuid.toLowerCase() === TARGET_SERVICE_UUID.toLowerCase()) {
+                        targetService = service;
+                        break;
+                    }
+                }
+
+                // Eğer özel servis doğrudan bulunamazsa ilk servisi yedek olarak alıp devam edelim
+                if (!targetService && services.length > 0) {
+                    console.warn("Özel servis doğrudan eşleşmedi, mevcut ilk servis kullanılıyor.");
+                    targetService = services[0];
+                }
+
+                if (!targetService) {
+                    throw new Error("Cihaz üzerinde uygun servis bulunamadı.");
+                }
+
+                statusDiv.innerText = "Karakteristik aranıyor...";
+                const characteristics = await targetService.getCharacteristics();
+                let targetChar = null;
+
+                for (let characteristic of characteristics) {
+                    if (characteristic.uuid.toLowerCase() === TARGET_CHAR_UUID.toLowerCase()) {
+                        targetChar = characteristic;
+                        break;
+                    }
+                }
+
+                if (!targetChar && characteristics.length > 0) {
+                    targetChar = characteristics[0];
+                }
+
+                if (!targetChar) {
+                    throw new Error("Uygun karakteristik bulunamadı.");
+                }
+
+                await targetChar.startNotifications();
+                targetChar.addEventListener('characteristicvaluechanged', (event) => {
                     const value = event.target.value;
-                    const temp = value.getInt16(0, true) / 100;
-                    const hum = value.getUint8(2);
-                    const batt = value.getUint8(3);
-                    
-                    statusDiv.innerText = "Bağlantı Başarılı ve Veri Alınıyor!";
-                    dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
+                    try {
+                        const temp = value.getInt16(0, true) / 100;
+                        const hum = value.getUint8(2);
+                        const batt = value.getUint8(3);
+                        
+                        statusDiv.innerText = "Bağlantı Başarılı ve Veri Alınıyor!";
+                        dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
+                    } catch (e) {
+                        statusDiv.innerText = "Veri okundu ancak format çözülemedi.";
+                        dataDiv.innerHTML = `Ham Boyut: ${value.byteLength} bayt`;
+                    }
                 });
 
-                statusDiv.innerText = "Veri akışı bekleniyor...";
+                statusDiv.innerText = "Veri akışı bekleniyor (Sensörü tetikleyin)...";
 
             } catch (error) {
                 statusDiv.innerText = "Hata oluştu: " + error.message;
