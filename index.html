@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE IoT Gateway - v1.5</title>
+    <title>BLE IoT Gateway - v1.6</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -15,14 +15,24 @@
             padding: 15px 30px;
             font-size: 18px;
             cursor: pointer;
-            background-color: #6f42c1;
+            background-color: #0056b3;
             color: white;
             border: none;
             border-radius: 5px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
         button:hover {
-            background-color: #5a32a3;
+            background-color: #003d82;
+        }
+        #version-badge {
+            font-size: 14px;
+            color: #fff;
+            background-color: #dc3545;
+            padding: 4px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 15px;
+            font-weight: bold;
         }
         #status {
             margin-top: 20px;
@@ -40,8 +50,9 @@
 </head>
 <body>
 
-    <h2>Xiaomi LYWSD03MMC (ATC) Gateway - v1.5</h2>
-    <p>Kapsamlı Servis ve Karakteristik Dökümü</p>
+    <div id="version-badge">Sürüm: v1.6</div>
+    <h2>Xiaomi LYWSD03MMC (ATC) Gateway</h2>
+    <p>Gelişmiş Servis ve Karakteristik Dökümü</p>
     
     <button onclick="connectAndRead()">Sensöre Bağlan ve Veri Al</button>
     <div id="status">Bağlantı bekleniyor...</div>
@@ -53,7 +64,7 @@
             const dataDiv = document.getElementById("data");
 
             try {
-                statusDiv.innerText = "v1.5: Cihaz taranıyor...";
+                statusDiv.innerText = "v1.6: Cihaz taranıyor...";
 
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
@@ -66,7 +77,7 @@
                     ]
                 });
 
-                statusDiv.innerText = "v1.5: Bağlantı kuruluyor...";
+                statusDiv.innerText = "v1.6: Bağlantı kuruluyor...";
                 
                 let server;
                 for (let i = 1; i <= 3; i++) {
@@ -80,7 +91,7 @@
                     }
                 }
 
-                statusDiv.innerText = "v1.5: Servisler listeleniyor...";
+                statusDiv.innerText = "v1.6: Servisler listeleniyor...";
                 const services = await server.getPrimaryServices();
                 
                 let allCharacteristics = [];
@@ -101,10 +112,9 @@
                     throw new Error("Cihaz hiç karakteristik döndürmedi.");
                 }
 
-                // Önce notify veya indicate destekleyeni bulmaya çalışalım, yoksa ilkini alalım
                 let workingCharacteristic = allCharacteristics.find(c => c.properties.notify || c.properties.indicate) || allCharacteristics[0];
 
-                statusDiv.innerText = "v1.5: Veri akışı dinleniyor...";
+                statusDiv.innerText = "v1.6: Veri akışı dinleniyor...";
 
                 workingCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
                     parsePayload(event.target.value, statusDiv, dataDiv);
@@ -120,7 +130,7 @@
                 parsePayload(initialValue, statusDiv, dataDiv);
 
             } catch (error) {
-                statusDiv.innerText = "v1.5 Hata: " + error.message;
+                statusDiv.innerText = "v1.6 Hata: " + error.message;
                 console.error(error);
             }
         }
@@ -132,14 +142,14 @@
                     const hum = value.getUint8(2);
                     const batt = value.getUint8(3);
 
-                    statusDiv.innerText = "v1.5: Veri Akışı Başarılı!";
+                    statusDiv.innerText = "v1.6: Veri Akışı Başarılı!";
                     dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
                 } else {
-                    statusDiv.innerText = "v1.5: Alternatif Veri Alındı";
+                    statusDiv.innerText = "v1.6: Alternatif Veri Alındı";
                     dataDiv.innerHTML = `Ham Boyut: ${value.byteLength} bayt, Hex: ${Array.from(new Uint8Array(value.buffer)).map(b => ('0' + b.toString(16)).slice(-2)).join(' ')}`;
                 }
             } catch (e) {
-                statusDiv.innerText = "v1.5: Veri çözümlenemedi.";
+                statusDiv.innerText = "v1.6: Veri çözümlenemedi.";
             }
         }
     </script>
