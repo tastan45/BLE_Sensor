@@ -1,26 +1,78 @@
-async function connectSensor() {
-    try {
-        console.log("Cihaz taranıyor...");
-        
-        // Android eşleşme protokolünü aşmak için filtreleme kaldırılmış ve acceptAllDevices aktif edilmiştir.
-        const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ['0000181a-0000-1000-8000-00805f9b34fb'] // ATC Çevresel Sensör UUID
-        });
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLE IoT Gateway - Sensör Bağlantısı</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin-top: 50px;
+            background-color: #f4f4f9;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
 
-        console.log("Cihaz seçildi:", device.name);
-        
-        // GATT sunucusuna doğrudan bağlantı talebi
-        const server = await device.gatt.connect();
-        console.log("GATT Sunucusuna başarıyla bağlanıldı.");
+    <h2>Xiaomi LYWSD03MMC Web Bluetooth Bağlantısı</h2>
+    <p>Android eşleşme sorunlarını atlamak için güncellenmiş arayüz.</p>
+    
+    <button onclick="connectSensor()">Sensöre Bağlan</button>
+    <div id="status">Bağlantı bekleniyor...</div>
 
-        // Opsiyonel olarak tanımlanan servise erişim
-        const service = await server.getPrimaryService('0000181a-0000-1000-8000-00805f9b34fb');
-        console.log("Çevresel sensör servisine ulaşıldı. Veri okuma işlemi başlatılabilir.");
+    <script>
+        async function connectSensor() {
+            const statusDiv = document.getElementById("status");
+            try {
+                statusDiv.innerText = "Cihaz taranıyor...";
+                console.log("Cihaz taranıyor...");
+                
+                // Android eşleşme protokolünü aşmak için filtreleme kaldırılmış ve acceptAllDevices aktif edilmiştir.
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['0000181a-0000-1000-8000-00805f9b34fb'] // ATC Çevresel Sensör UUID
+                });
 
-        // Veri okuma (characteristic) işlemleri bu aşamadan sonra eklenecektir.
-        
-    } catch (error) {
-        console.error("Bağlantı reddedildi veya hata oluştu:", error);
-    }
-}
+                statusDiv.innerText = "Cihaz seçildi: " + (device.name || "İsimsiz Cihaz");
+                console.log("Cihaz seçildi:", device.name);
+                
+                // GATT sunucusuna doğrudan bağlantı talebi
+                const server = await device.gatt.connect();
+                statusDiv.innerText = "GATT Sunucusuna başarıyla bağlanıldı.";
+                console.log("GATT Sunucusuna başarıyla bağlanıldı.");
+
+                // Opsiyonel olarak tanımlanan servise erişim
+                const service = await server.getPrimaryService('0000181a-0000-1000-8000-00805f9b34fb');
+                statusDiv.innerText = "Çevresel sensör servisine ulaşıldı!";
+                console.log("Çevresel sensör servisine ulaşıldı. Veri okuma işlemi başlatılabilir.");
+
+                // Veri okuma (characteristic) işlemleri bu aşamadan sonra eklenecektir.
+                
+            } catch (error) {
+                statusDiv.innerText = "Hata oluştu: " + error;
+                console.error("Bağlantı reddedildi veya hata oluştu:", error);
+            }
+        }
+    </script>
+
+</body>
+</html>
