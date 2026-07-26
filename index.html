@@ -34,7 +34,7 @@
 <body>
 
     <h2>Xiaomi LYWSD03MMC Web Bluetooth Bağlantısı</h2>
-    <p>Android eşleşme sorunlarını atlamak için güncellenmiş arayüz.</p>
+    <p>ATC Firmware servis UUID uyumsuzluğunu aşmak için güncellenmiş arayüz.</p>
     
     <button onclick="connectSensor()">Sensöre Bağlan</button>
     <div id="status">Bağlantı bekleniyor...</div>
@@ -46,10 +46,14 @@
                 statusDiv.innerText = "Cihaz taranıyor...";
                 console.log("Cihaz taranıyor...");
                 
-                // Android eşleşme protokolünü aşmak için filtreleme kaldırılmış ve acceptAllDevices aktif edilmiştir.
+                // Tüm cihazları kabul et ve ATC/Custom firmware için yaygın servis UUID'lerini optionalServices listesine ekle
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: ['0000181a-0000-1000-8000-00805f9b34fb'] // ATC Çevresel Sensör UUID
+                    optionalServices: [
+                        '0000181a-0000-1000-8000-00805f9b34fb', // Environmental Sensing
+                        'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6', // ATC / PVVX Custom Service
+                        '0000ffe0-0000-1000-8000-00805f9b34fb'  // Telink Custom Service
+                    ]
                 });
 
                 statusDiv.innerText = "Cihaz seçildi: " + (device.name || "İsimsiz Cihaz");
@@ -60,15 +64,34 @@
                 statusDiv.innerText = "GATT Sunucusuna başarıyla bağlanıldı.";
                 console.log("GATT Sunucusuna başarıyla bağlanıldı.");
 
-                // Opsiyonel olarak tanımlanan servise erişim
-                const service = await server.getPrimaryService('0000181a-0000-1000-8000-00805f9b34fb');
-                statusDiv.innerText = "Çevresel sensör servisine ulaşıldı!";
-                console.log("Çevresel sensör servisine ulaşıldı. Veri okuma işlemi başlatılabilir.");
+                // Cihazın sunduğu servisleri bulmaya çalışalım
+                statusDiv.innerText = "Servisler taranıyor...";
+                const services = await server.getPrimaryServices();
+                
+                let targetService = null;
+                for (const service of services) {
+                    console.log("Bulunan Servis UUID:", service.uuid);
+                    // ATC firmware için kullanılan ana özel servis UUID kontrolü
+                    if (service.uuid === 'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6' || service.uuid === '0000181a-0000-1000-8000-00805f9b34fb') {
+                        targetService = service;
+                        break;
+                    }
+                }
 
-                // Veri okuma (characteristic) işlemleri bu aşamadan sonra eklenecektir.
+                // Eğer özel servis bulunamazsa ilk servisi baz al
+                if (!targetService && services.length > 0) {
+                    targetService = services[0];
+                }
+
+                if (targetService) {
+                    statusDiv.innerText = "Uygun servise ulaşıldı: " + targetService.uuid;
+                    console.log("Ulaşılan Servis UUID:", targetService.uuid);
+                } else {
+                    throw new Error("Cihaz üzerinde uygun GATT servisi bulunamadı.");
+                }
                 
             } catch (error) {
-                statusDiv.innerText = "Hata oluştu: " + error;
+                statusDiv.innerText = "Hata oluştu: " + error.message;
                 console.error("Bağlantı reddedildi veya hata oluştu:", error);
             }
         }
