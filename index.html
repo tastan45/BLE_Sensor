@@ -1,4 +1,4 @@
-<!-- v2.7 -->
+<!-- v2.8 -->
 <!DOCTYPE html>
 <html lang="tr">
 <head>
@@ -11,58 +11,82 @@
         .metric { font-size: 18px; margin: 10px 0; }
         button { width: 100%; padding: 10px; background: #007bff; color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; margin-bottom: 10px; }
         button:hover { background: #0056b3; }
+        #log { font-size: 11px; background: #eee; padding: 8px; margin-top: 10px; border-radius: 4px; max-height: 120px; overflow-y: auto; white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <div id="app-version" style="font-size: 12px; color: #666; padding: 4px 8px; background: #f0f0f0; margin-bottom: 12px; border-radius: 4px;">Arayüz Sürümü: v2.7</div>
+    <div id="app-version" style="font-size: 12px; color: #666; padding: 4px 8px; background: #f0f0f0; margin-bottom: 12px; border-radius: 4px;">Arayüz Sürümü: v2.8</div>
     <h2>BLE Sensör Takip</h2>
-    <button onclick="connectAndReadGATT()">Tüm Cihazları Listele</button>
+    <button onclick="connectAndReadGATT()">Cihazı Seç ve Bağlan</button>
     
     <div class="metric">Sıcaklık: <span id="temp">--</span></div>
     <div class="metric">Nem: <span id="humidity">--</span></div>
     <div class="metric">Pil: <span id="battery">--</span></div>
+    
+    <div id="log">Loglar burada görünecek...</div>
 </div>
 
 <script>
+function logMessage(msg) {
+    const logEl = document.getElementById('log');
+    logEl.innerText += '\n' + msg;
+    logEl.scrollTop = logEl.scrollHeight;
+    console.log(msg);
+}
+
 async function connectAndReadGATT() {
     try {
-        console.log('v2.7 - Tüm Bluetooth cihazları taranıyor...');
+        logMessage('v2.8 - requestDevice çağrılıyor...');
         const device = await navigator.bluetooth.requestDevice({
             acceptAllDevices: true,
             optionalServices: ['ebe0ccc0-75a3-4f51-9f8e-d9036c6460fa']
         });
 
-        console.log('v2.7 - Seçilen cihaz:', device.name);
+        logMessage('Seçilen cihaz: ' + (device.name || 'İsimsiz'));
+
+        device.addEventListener('gattserverdisconnected', () => {
+            logMessage('Uyarı: Cihaz bağlantısı koptu!');
+        });
+
+        logMessage('GATT sunucusuna bağlanılıyor...');
         const server = await device.gatt.connect();
+        logMessage('GATT bağlantısı başarılı.');
+
+        logMessage('Servis aranıyor...');
         const service = await server.getPrimaryService('ebe0ccc0-75a3-4f51-9f8e-d9036c6460fa');
+        logMessage('Servis bulundu, karakteristik aranıyor...');
+        
         const characteristic = await service.getCharacteristic('ebe0ccc1-75a3-4f51-9f8e-d9036c6460fa');
+        logMessage('Karakteristik bulundu, bildirimler açılıyor...');
 
         await characteristic.startNotifications();
+        logMessage('Bildirimler aktif, veri bekleniyor...');
+
         characteristic.addEventListener('characteristicvaluechanged', (event) => {
             const value = event.target.value;
+            logMessage('Ham veri uzunluğu: ' + value.byteLength);
             
             if (value.byteLength >= 5) {
                 const temperature = value.getInt16(0, true) / 100;
                 const humidity = value.getUint8(2);
                 const battery = value.getUint8(3);
 
-                console.log(`[v2.7 GATT] Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
+                logMessage(`Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
                 
                 document.getElementById('temp').innerText = `${temperature} °C`;
                 document.getElementById('humidity').innerText = `% ${humidity}`;
                 document.getElementById('battery').innerText = `% ${battery}`;
             } else if (value.byteLength === 1) {
                 const battery = value.getUint8(0);
-                console.log(`[v2.7 GATT] Tek bayt veri (Pil): %${battery}`);
+                logMessage(`Pil verisi: %${battery}`);
                 document.getElementById('battery').innerText = `% ${battery}`;
             }
         });
 
-        console.log('v2.7 - Bildirimler başlatıldı.');
     } catch (error) {
-        console.error('v2.7 - Bağlantı hatası:', error);
+        logMessage('HATA: ' + error);
     }
 }
 </script>
