@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLE IoT Gateway - Sensör Bağlantısı</title>
+    <title>BLE IoT Gateway - Sensör Verisi</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -29,78 +29,74 @@
             font-weight: bold;
             color: #333;
         }
+        #data {
+            margin-top: 15px;
+            font-size: 18px;
+            color: #006400;
+        }
     </style>
 </head>
 <body>
 
-    <h2>Xiaomi LYWSD03MMC Web Bluetooth Bağlantısı</h2>
-    <p>Android Bluetooth yığını kilitlenmesini önleyen kararlı arayüz.</p>
+    <h2>Xiaomi LYWSD03MMC Sensör Okuma</h2>
+    <p>Kesin ATC Servis Bağlantısı</p>
     
-    <button onclick="connectSensor()">Sensöre Bağlan</button>
+    <button onclick="connectSensor()">Sensöre Bağlan ve Oku</button>
     <div id="status">Bağlantı bekleniyor...</div>
+    <div id="data"></div>
 
     <script>
+        const ATC_SERVICE_UUID = 'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6';
+        const ATC_DATA_CHAR_UUID = 'ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6';
+
         async function connectSensor() {
             const statusDiv = document.getElementById("status");
+            const dataDiv = document.getElementById("data");
+            
             try {
                 statusDiv.innerText = "Cihaz taranıyor...";
-                console.log("Cihaz taranıyor...");
                 
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: [
-                        'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6', 
-                        '0000181a-0000-1000-8000-00805f9b34fb', 
-                        '0000ffe0-0000-1000-8000-00805f9b34fb', 
-                        '00001800-0000-1000-8000-00805f9b34fb', 
-                        '00001801-0000-1000-8000-00805f9b34fb'  
-                    ]
+                    optionalServices: [ATC_SERVICE_UUID]
                 });
 
-                statusDiv.innerText = "Cihaz seçildi: " + (device.name || "İsimsiz Cihaz");
-                console.log("Cihaz seçildi:", device.name);
+                statusDiv.innerText = "Cihaz seçildi, bağlanılıyor...";
                 
-                // Android yığınını rahatlatmak için bağlantı öncesi kısa bir gecikme
-                await new Promise(resolve => setTimeout(resolve, 500));
-
                 let server = null;
-                let attempts = 3;
-                
-                for (let i = 1; i <= attempts; i++) {
+                for (let i = 1; i <= 3; i++) {
                     try {
-                        statusDiv.innerText = `GATT bağlantısı deneniyor (${i}/${attempts})...`;
-                        console.log(`Bağlantı denemesi: ${i}`);
-                        
-                        if (device.gatt.connected) {
-                            await device.gatt.disconnect();
-                        }
-                        
+                        if (device.gatt.connected) await device.gatt.disconnect();
                         server = await device.gatt.connect();
                         break;
-                    } catch (connErr) {
-                        console.warn(`Deneme ${i} başarısız:`, connErr);
-                        if (i === attempts) throw connErr;
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    } catch (err) {
+                        if (i === 3) throw err;
+                        await new Promise(res => setTimeout(res, 2000));
                     }
                 }
 
-                statusDiv.innerText = "GATT sunucusuna bağlandı, servisler taranıyor...";
-                console.log("GATT Sunucusuna başarıyla bağlanıldı.");
-
-                const services = await server.getPrimaryServices();
-                console.log("Bulunan servis sayısı:", services.length);
-
-                if (services && services.length > 0) {
-                    const targetService = services[0];
-                    statusDiv.innerText = "Bağlantı Başarılı! Servis UUID: " + targetService.uuid;
-                    console.log("Kullanılan Servis UUID:", targetService.uuid);
-                } else {
-                    throw new Error("Cihaz herhangi bir servis döndürmedi.");
-                }
+                statusDiv.innerText = "ATC özel servisi aranıyor...";
+                const service = await server.getPrimaryService(ATC_SERVICE_UUID);
                 
+                statusDiv.innerText = "Karakteristik okunuyor...";
+                const characteristic = await service.getCharacteristic(ATC_DATA_CHAR_UUID);
+                
+                await characteristic.startNotifications();
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = event.target.value;
+                    const temp = value.getInt16(0, true) / 100;
+                    const hum = value.getUint8(2);
+                    const batt = value.getUint8(3);
+                    
+                    statusDiv.innerText = "Bağlantı Başarılı ve Veri Alınıyor!";
+                    dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
+                });
+
+                statusDiv.innerText = "Veri akışı bekleniyor...";
+
             } catch (error) {
                 statusDiv.innerText = "Hata oluştu: " + error.message;
-                console.error("Bağlantı hatası:", error);
+                console.error(error);
             }
         }
     </script>
