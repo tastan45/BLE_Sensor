@@ -1,48 +1,42 @@
-// v2.2 - Güncellenmiş BLE Dashboard Kodu (ATC 4-Byte Payload ve Notify Desteği)
-async function connectAndSubscribe() {
+// v2.3 - BLE Tarama Verisi (Advertisement Data) ile Doğrudan Okuma
+async function startScanForATC() {
     try {
-        const serviceUuid = 'ebe0ccc0-75a3-4f51-9f8e-d9036c6460fa';
-        const characteristicUuid = 'ebe0ccc1-75a3-4f51-9f8e-d9036c6460fa';
-
-        console.log('Bluetooth cihazı aranıyor...');
-        const device = await navigator.bluetooth.requestDevice({
-            filters: [{ services: [serviceUuid] }],
-            optionalServices: [serviceUuid]
-        });
-
-        const server = await device.gatt.connect();
-        const service = await server.getPrimaryService(serviceUuid);
-        const characteristic = await service.getCharacteristic(characteristicUuid);
-
-        // Bildirimleri başlat (Sürekli veri akışı için kritik)
-        await characteristic.startNotifications();
+        console.log('Bluetooth reklam paketleri taranıyor...');
         
-        characteristic.addEventListener('characteristicvaluechanged', (event) => {
-            const value = event.target.value;
-            
-            // ATC custom firmware 4-byte payload formatı: [Temp(2) | Hum(1) | Batt(1)]
-            if (value.byteLength >= 4) {
-                const tempRaw = value.getInt16(0, true); // Little-endian
-                const temperature = tempRaw / 100;
-                const humidity = value.getUint8(2);
-                const battery = value.getUint8(3);
+        const options = {
+            acceptAllAdvertisements: true,
+            optionalServices: ['ebe0ccc0-75a3-4f51-9f8e-d9036c6460fa']
+        };
 
-                console.log(`Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
-                
-                // Arayüz güncellemelerini burada yapabilirsiniz
-                document.getElementById('temp').innerText = `${temperature} °C`;
-                document.getElementById('humidity').innerText = `% ${humidity}`;
-                document.getElementById('battery').innerText = `% ${battery}`;
-            } else {
-                // Tek bayt gelmesi durumunda (örneğin sadece pil veya meta veri)
-                const singleByte = value.getUint8(0);
-                console.log(`Tek bayt alındı (Muhtemel Pil): ${singleByte}`);
-                document.getElementById('battery').innerText = `% ${singleByte}`;
+        const scanner = await navigator.bluetooth.requestLEScan(options);
+
+        navigator.bluetooth.addEventListener('advertisementreceived', (event) => {
+            const device = event.device;
+            const manufacturerData = event.manufacturerData;
+
+            // ATC custom firmware genellikle Manufacturer Specific Data içinde ver yayınlar
+            for (const [companyId, data] of manufacturerData.entries()) {
+                // ATC formatı kontrolü veya veri uzunluğu analizi (Genellikle 13+ bayt olur)
+                if (data.byteLength >= 13) {
+                    const value = new DataView(data.buffer);
+                    
+                    // ATC formatına göre ayrıştırma (örnek offsetler)
+                    const tempRaw = value.getInt16(6, true); // Sıcaklık offset
+                    const temperature = tempRaw / 100;
+                    const humidity = value.getUint8(8);      // Nem offset
+                    const battery = value.getUint8(9);       // Pil offset
+
+                    console.log(`[Scan] Cihaz: ${device.name}, Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
+                    
+                    document.getElementById('temp').innerText = `${temperature} °C`;
+                    document.getElementById('humidity').innerText = `% ${humidity}`;
+                    document.getElementById('battery').innerText = `% ${battery}`;
+                }
             }
         });
 
-        console.log('Bildirimler aktif, veri bekleniyor...');
+        console.log('Reklam dinleme başlatıldı...');
     } catch (error) {
-        console.error('BLE bağlantı hatası:', error);
+        console.error('Tarama hatası (HTTPS veya flag gerekebilir):', error);
     }
 }
