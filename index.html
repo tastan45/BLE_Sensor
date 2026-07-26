@@ -39,16 +39,13 @@
 <body>
 
     <h2>Xiaomi LYWSD03MMC Sensör Okuma</h2>
-    <p>Dinamik Servis Eşleme Arayüzü</p>
+    <p>Esnek Servis Tarama Arayüzü</p>
     
     <button onclick="connectSensor()">Sensöre Bağlan ve Oku</button>
     <div id="status">Bağlantı bekleniyor...</div>
     <div id="data"></div>
 
     <script>
-        const TARGET_SERVICE_UUID = 'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6';
-        const TARGET_CHAR_UUID = 'ebe0ccc1-7a0a-4b0c-8a1a-6ff2997da3a6';
-
         async function connectSensor() {
             const statusDiv = document.getElementById("status");
             const dataDiv = document.getElementById("data");
@@ -56,11 +53,10 @@
             try {
                 statusDiv.innerText = "Cihaz taranıyor...";
                 
-                // Android önbellek ve servis gizleme sorununu aşmak için kapsamlı optionalServices listesi
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
                     optionalServices: [
-                        TARGET_SERVICE_UUID,
+                        'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6',
                         '00001800-0000-1000-8000-00805f9b34fb',
                         '00001801-0000-1000-8000-00805f9b34fb',
                         '0000181a-0000-1000-8000-00805f9b34fb',
@@ -85,60 +81,57 @@
                 statusDiv.innerText = "Servisler taranıyor...";
                 const services = await server.getPrimaryServices();
                 
-                let targetService = null;
+                let targetCharacteristic = null;
+
+                // Tüm servisleri ve altındaki karakteristikleri tarayarak bildirim destekleyeni bulalım
                 for (let service of services) {
-                    if (service.uuid.toLowerCase() === TARGET_SERVICE_UUID.toLowerCase()) {
-                        targetService = service;
-                        break;
+                    try {
+                        const characteristics = await service.getCharacteristics();
+                        for (let characteristic of characteristics) {
+                            if (characteristic.properties.notify || characteristic.properties.indicate) {
+                                targetCharacteristic = characteristic;
+                                console.log("Uygun karakteristik bulundu:", characteristic.uuid);
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("Servis taranamadı:", service.uuid);
                     }
+                    if (targetCharacteristic) break;
                 }
 
-                // Eğer özel servis doğrudan bulunamazsa ilk servisi yedek olarak alıp devam edelim
-                if (!targetService && services.length > 0) {
-                    console.warn("Özel servis doğrudan eşleşmedi, mevcut ilk servis kullanılıyor.");
-                    targetService = services[0];
+                if (!targetCharacteristic && services.length > 0) {
+                    const chars = await services[0].getCharacteristics();
+                    if (chars.length > 0) targetCharacteristic = chars[0];
                 }
 
-                if (!targetService) {
-                    throw new Error("Cihaz üzerinde uygun servis bulunamadı.");
+                if (!targetCharacteristic) {
+                    throw new Error("Okunabilir karakteristik bulunamadı.");
                 }
 
-                statusDiv.innerText = "Karakteristik aranıyor...";
-                const characteristics = await targetService.getCharacteristics();
-                let targetChar = null;
-
-                for (let characteristic of characteristics) {
-                    if (characteristic.uuid.toLowerCase() === TARGET_CHAR_UUID.toLowerCase()) {
-                        targetChar = characteristic;
-                        break;
-                    }
-                }
-
-                if (!targetChar && characteristics.length > 0) {
-                    targetChar = characteristics[0];
-                }
-
-                if (!targetChar) {
-                    throw new Error("Uygun karakteristik bulunamadı.");
-                }
-
-                await targetChar.startNotifications();
-                targetChar.addEventListener('characteristicvaluechanged', (event) => {
+                statusDiv.innerText = "Bildirimler başlatılıyor...";
+                await targetCharacteristic.startNotifications();
+                
+                targetCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
                     const value = event.target.value;
                     try {
-                        const temp = value.getInt16(0, true) / 100;
-                        const hum = value.getUint8(2);
-                        const batt = value.getUint8(3);
-                        
-                        statusDiv.innerText = "Bağlantı Başarılı ve Veri Alınıyor!";
-                        dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
+                        if (value.byteLength >= 4) {
+                            const temp = value.getInt16(0, true) / 100;
+                            const hum = value.getUint8(2);
+                            const batt = value.getUint8(3);
+                            
+                            statusDiv.innerText = "Veri Akışı Aktif!";
+                            dataDiv.innerHTML = `Sıcaklık: ${temp.toFixed(2)} °C<br>Nem: %${hum}<br>Pil: %${batt}`;
+                        } else {
+                            statusDiv.innerText = "Veri alındı (Farklı format)";
+                            dataDiv.innerHTML = `Boyut: ${value.byteLength} bayt`;
+                        }
                     } catch (e) {
-                        statusDiv.innerText = "Veri okundu ancak format çözülemedi.";
-                        dataDiv.innerHTML = `Ham Boyut: ${value.byteLength} bayt`;
+                        statusDiv.innerText = "Veri çözümlenemedi.";
                     }
                 });
 
-                statusDiv.innerText = "Veri akışı bekleniyor (Sensörü tetikleyin)...";
+                statusDiv.innerText = "Bağlantı Başarılı! Veri bekleniyor...";
 
             } catch (error) {
                 statusDiv.innerText = "Hata oluştu: " + error.message;
