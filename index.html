@@ -1,7 +1,34 @@
-// v2.3 - BLE Tarama Verisi (Advertisement Data) ile Doğrudan Okuma
+<!-- v2.5 -->
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xiaomi BLE Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f9f9f9; color: #333; }
+        .card { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 400px; margin: auto; }
+        .metric { font-size: 18px; margin: 10px 0; }
+        button { width: 100%; padding: 10px; background: #007bff; color: #fff; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="app-version" style="font-size: 12px; color: #666; padding: 4px 8px; background: #f0f0f0; margin-bottom: 12px; border-radius: 4px;">Arayüz Sürümü: v2.5</div>
+    <h2>BLE Sensör Takip</h2>
+    <button onclick="startScanForATC()">Taramayı Başlat</button>
+    
+    <div class="metric">Sıcaklık: <span id="temp">--</span></div>
+    <div class="metric">Nem: <span id="humidity">--</span></div>
+    <div class="metric">Pil: <span id="battery">--</span></div>
+</div>
+
+<script>
 async function startScanForATC() {
     try {
-        console.log('Bluetooth reklam paketleri taranıyor...');
+        console.log('v2.5 - Bluetooth reklam paketleri taranıyor...');
         
         const options = {
             acceptAllAdvertisements: true,
@@ -14,19 +41,16 @@ async function startScanForATC() {
             const device = event.device;
             const manufacturerData = event.manufacturerData;
 
-            // ATC custom firmware genellikle Manufacturer Specific Data içinde ver yayınlar
             for (const [companyId, data] of manufacturerData.entries()) {
-                // ATC formatı kontrolü veya veri uzunluğu analizi (Genellikle 13+ bayt olur)
                 if (data.byteLength >= 13) {
                     const value = new DataView(data.buffer);
                     
-                    // ATC formatına göre ayrıştırma (örnek offsetler)
-                    const tempRaw = value.getInt16(6, true); // Sıcaklık offset
+                    const tempRaw = value.getInt16(6, true);
                     const temperature = tempRaw / 100;
-                    const humidity = value.getUint8(8);      // Nem offset
-                    const battery = value.getUint8(9);       // Pil offset
+                    const humidity = value.getUint8(8);
+                    const battery = value.getUint8(9);
 
-                    console.log(`[Scan] Cihaz: ${device.name}, Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
+                    console.log(`[v2.5 Scan] Cihaz: ${device.name}, Sıcaklık: ${temperature}°C, Nem: %${humidity}, Pil: %${battery}`);
                     
                     document.getElementById('temp').innerText = `${temperature} °C`;
                     document.getElementById('humidity').innerText = `% ${humidity}`;
@@ -35,8 +59,12 @@ async function startScanForATC() {
             }
         });
 
-        console.log('Reklam dinleme başlatıldı...');
+        console.log('v2.5 - Reklam dinleme başlatıldı...');
     } catch (error) {
-        console.error('Tarama hatası (HTTPS veya flag gerekebilir):', error);
+        console.error('v2.5 - Tarama hatası:', error);
     }
 }
+</script>
+
+</body>
+</html>
