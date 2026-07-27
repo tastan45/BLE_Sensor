@@ -1,61 +1,52 @@
-<!-- BLE Explorer v1.0 -->
+<!-- MJ_HT_V1 Dashboard v4.0 -->
 <!DOCTYPE html>
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>BLE Servis Tarayıcı</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MJ_HT_V1 BLE Dashboard</title>
 
     <style>
         body {
             font-family: Arial, sans-serif;
-            margin: 0;
             padding: 20px;
-            background: #f5f5f7;
-            color: #222;
+            background: #f9f9f9;
+            color: #333;
         }
 
         .card {
-            max-width: 500px;
+            background: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.12);
+            max-width: 420px;
             margin: auto;
-            padding: 18px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
         }
 
         .version {
-            padding: 8px 10px;
-            margin-bottom: 15px;
-            background: #eeeeee;
+            font-size: 12px;
             color: #666;
-            border-radius: 6px;
-            font-size: 13px;
+            padding: 7px 9px;
+            background: #eee;
+            margin-bottom: 12px;
+            border-radius: 5px;
         }
 
-        h2 {
-            margin-top: 8px;
+        .metric {
+            font-size: 20px;
+            margin: 15px 0;
         }
 
         button {
             width: 100%;
-            padding: 13px;
+            padding: 12px;
             margin-bottom: 10px;
             border: none;
-            border-radius: 7px;
+            border-radius: 6px;
             font-size: 17px;
-            cursor: pointer;
             color: white;
             background: #087ff5;
-        }
-
-        button:hover {
-            background: #0067d4;
+            cursor: pointer;
         }
 
         button:disabled {
@@ -63,33 +54,14 @@
             cursor: not-allowed;
         }
 
-        .disconnect {
-            background: #d33;
-        }
-
-        .disconnect:hover {
-            background: #ad1f1f;
-        }
-
-        .status {
-            margin: 12px 0;
-            padding: 10px;
-            background: #f1f1f1;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-
         #log {
+            font-size: 11px;
+            background: #eee;
+            padding: 9px;
             margin-top: 12px;
-            padding: 10px;
-            min-height: 240px;
-            max-height: 500px;
+            border-radius: 5px;
+            max-height: 240px;
             overflow-y: auto;
-            border-radius: 7px;
-            background: #111;
-            color: #b8ffb8;
-            font-family: monospace;
-            font-size: 12px;
             white-space: pre-wrap;
             word-break: break-word;
         }
@@ -101,41 +73,42 @@
 <div class="card">
 
     <div class="version">
-        BLE Explorer Sürümü: v1.0
+        Arayüz Sürümü: v4.0
     </div>
 
-    <h2>BLE Servis Tarayıcı</h2>
+    <h2>MJ_HT_V1 Sensör Takip</h2>
 
-    <button
-        id="connectButton"
-        onclick="connectAndScan()"
-    >
-        Cihazı Seç ve Tara
+    <button id="connectButton" onclick="connectSensor()">
+        Sensörü Seç ve Başlat
     </button>
 
-    <button
-        id="disconnectButton"
-        class="disconnect"
-        onclick="disconnectDevice()"
-        disabled
-    >
+    <button id="disconnectButton" onclick="disconnectSensor()" disabled>
         Bağlantıyı Kes
     </button>
 
-    <div class="status">
-        Durum:
-        <strong id="statusText">Bağlı değil</strong>
+    <div class="metric">
+        Sıcaklık: <span id="temp">--</span>
     </div>
 
-    <div id="log">BLE tarama logları burada görünecek...</div>
+    <div class="metric">
+        Nem: <span id="humidity">--</span>
+    </div>
+
+    <div class="metric">
+        Pil: <span id="battery">--</span>
+    </div>
+
+    <div id="log">Loglar burada görünecek...</div>
 
 </div>
 
 <script>
-let bluetoothDevice = null;
-let gattServer = null;
+const BATTERY_SERVICE_UUID = 'battery_service';
+const BATTERY_CHARACTERISTIC_UUID = 'battery_level';
 
-function logMessage(message = '') {
+let bluetoothDevice = null;
+
+function logMessage(message) {
     const logElement = document.getElementById('log');
     const time = new Date().toLocaleTimeString('tr-TR');
 
@@ -145,325 +118,239 @@ function logMessage(message = '') {
     console.log(message);
 }
 
-function clearLog() {
-    document.getElementById('log').innerText =
-        'BLE tarama başlatılıyor...';
-}
-
-function setStatus(text) {
-    document.getElementById('statusText').innerText = text;
-}
-
 function setConnectedState(connected) {
     document.getElementById('connectButton').disabled = connected;
     document.getElementById('disconnectButton').disabled = !connected;
 }
 
-function shortUuid(uuid) {
-    const normalizedUuid = uuid.toLowerCase();
-
-    if (
-        normalizedUuid.startsWith('0000') &&
-        normalizedUuid.endsWith('-0000-1000-8000-00805f9b34fb')
-    ) {
-        return normalizedUuid.substring(4, 8).toUpperCase();
-    }
-
-    return uuid;
-}
-
-function getCharacteristicProperties(characteristic) {
-    const properties = characteristic.properties;
-    const list = [];
-
-    if (properties.broadcast) {
-        list.push('broadcast');
-    }
-
-    if (properties.read) {
-        list.push('read');
-    }
-
-    if (properties.writeWithoutResponse) {
-        list.push('writeWithoutResponse');
-    }
-
-    if (properties.write) {
-        list.push('write');
-    }
-
-    if (properties.notify) {
-        list.push('notify');
-    }
-
-    if (properties.indicate) {
-        list.push('indicate');
-    }
-
-    if (properties.authenticatedSignedWrites) {
-        list.push('authenticatedSignedWrites');
-    }
-
-    if (properties.reliableWrite) {
-        list.push('reliableWrite');
-    }
-
-    if (properties.writableAuxiliaries) {
-        list.push('writableAuxiliaries');
-    }
-
-    return list.length > 0
-        ? list.join(', ')
-        : 'özellik bulunamadı';
-}
-
-function dataViewToHex(dataView) {
-    const values = [];
+function bytesToHex(dataView) {
+    const result = [];
 
     for (let i = 0; i < dataView.byteLength; i++) {
-        values.push(
-            dataView
-                .getUint8(i)
+        result.push(
+            dataView.getUint8(i)
                 .toString(16)
                 .padStart(2, '0')
                 .toUpperCase()
         );
     }
 
-    return values.join(' ');
+    return result.join(' ');
 }
 
-async function connectAndScan() {
+async function connectSensor() {
     if (!navigator.bluetooth) {
-        logMessage(
-            'HATA: Bu tarayıcı Web Bluetooth desteklemiyor.'
-        );
-
-        logMessage(
-            'Android Chrome veya masaüstü Chrome/Edge kullanın.'
-        );
-
+        logMessage('HATA: Web Bluetooth desteklenmiyor.');
         return;
     }
 
     try {
-        clearLog();
+        logMessage('MJ_HT_V1 sensörü aranıyor...');
 
-        setStatus('Cihaz seçimi bekleniyor');
-
-        logMessage('Bluetooth cihaz listesi açılıyor...');
-
-        /*
-         * acceptAllDevices kullanıldığında erişmek istediğimiz
-         * özel servisler optionalServices içinde belirtilmelidir.
-         *
-         * Xiaomi cihazlarında görülebilecek yaygın servisler
-         * aşağıda eklenmiştir.
-         */
         bluetoothDevice =
             await navigator.bluetooth.requestDevice({
-                acceptAllDevices: true,
+                filters: [
+                    { name: 'MJ_HT_V1' }
+                ],
 
                 optionalServices: [
-                    'generic_access',
-                    'generic_attribute',
-                    'device_information',
-                    'battery_service',
-                    'environmental_sensing',
-
-                    '00001800-0000-1000-8000-00805f9b34fb',
-                    '00001801-0000-1000-8000-00805f9b34fb',
-                    '0000180a-0000-1000-8000-00805f9b34fb',
-                    '0000180f-0000-1000-8000-00805f9b34fb',
-                    '0000181a-0000-1000-8000-00805f9b34fb',
-
-                    'ebe0ccb0-7a0a-4b0c-8a1a-6ff2997da3a6',
-                    'ebe0ccc0-7a0a-4b0c-8a1a-6ff2997da3a6',
-                    '00001f10-0000-1000-8000-00805f9b34fb'
+                    BATTERY_SERVICE_UUID,
+                    'device_information'
                 ]
             });
+
+        logMessage(
+            'Seçilen cihaz: ' +
+            (bluetoothDevice.name || 'İsimsiz cihaz')
+        );
 
         bluetoothDevice.addEventListener(
             'gattserverdisconnected',
             handleDisconnected
         );
 
-        const deviceName =
-            bluetoothDevice.name || 'İsimsiz BLE cihazı';
+        bluetoothDevice.addEventListener(
+            'advertisementreceived',
+            handleAdvertisement
+        );
 
-        logMessage(`Seçilen cihaz: ${deviceName}`);
-        logMessage(`Cihaz kimliği: ${bluetoothDevice.id}`);
+        logMessage('GATT bağlantısı kuruluyor...');
 
-        setStatus('GATT bağlantısı kuruluyor');
-
-        logMessage('GATT sunucusuna bağlanılıyor...');
-
-        gattServer =
+        const server =
             await bluetoothDevice.gatt.connect();
 
         logMessage('GATT bağlantısı başarılı.');
 
         setConnectedState(true);
-        setStatus(`Bağlı: ${deviceName}`);
 
-        logMessage('');
-        logMessage('Servisler aranıyor...');
-
-        const services =
-            await gattServer.getPrimaryServices();
-
-        logMessage(
-            `Erişilebilen servis sayısı: ${services.length}`
-        );
-
-        if (services.length === 0) {
-            logMessage(
-                'UYARI: Erişilebilir servis bulunamadı.'
-            );
-            return;
-        }
-
-        for (
-            let serviceIndex = 0;
-            serviceIndex < services.length;
-            serviceIndex++
-        ) {
-            const service = services[serviceIndex];
-
-            logMessage('');
-            logMessage(
-                '========================================'
-            );
-
-            logMessage(
-                `SERVİS ${serviceIndex + 1}`
-            );
-
-            logMessage(
-                `Tam UUID: ${service.uuid}`
-            );
-
-            logMessage(
-                `Kısa UUID: ${shortUuid(service.uuid)}`
-            );
-
-            try {
-                const characteristics =
-                    await service.getCharacteristics();
-
-                logMessage(
-                    `Karakteristik sayısı: ${characteristics.length}`
-                );
-
-                for (
-                    let characteristicIndex = 0;
-                    characteristicIndex < characteristics.length;
-                    characteristicIndex++
-                ) {
-                    const characteristic =
-                        characteristics[characteristicIndex];
-
-                    logMessage('');
-                    logMessage(
-                        `  Karakteristik ${characteristicIndex + 1}`
-                    );
-
-                    logMessage(
-                        `  Tam UUID: ${characteristic.uuid}`
-                    );
-
-                    logMessage(
-                        `  Kısa UUID: ${shortUuid(characteristic.uuid)}`
-                    );
-
-                    logMessage(
-                        `  Özellikler: ${getCharacteristicProperties(characteristic)}`
-                    );
-
-                    if (characteristic.properties.read) {
-                        try {
-                            const value =
-                                await characteristic.readValue();
-
-                            logMessage(
-                                `  Okunan veri: ${dataViewToHex(value)}`
-                            );
-                        } catch (readError) {
-                            logMessage(
-                                `  Okuma başarısız: ${readError.message}`
-                            );
-                        }
-                    }
-
-                    if (characteristic.properties.notify) {
-                        logMessage(
-                            '  Bildirim özelliği mevcut.'
-                        );
-                    }
-
-                    if (characteristic.properties.indicate) {
-                        logMessage(
-                            '  Indicate özelliği mevcut.'
-                        );
-                    }
-                }
-
-            } catch (characteristicError) {
-                logMessage(
-                    'Karakteristikler okunamadı: ' +
-                    characteristicError.message
-                );
-            }
-        }
-
-        logMessage('');
-        logMessage(
-            '========================================'
-        );
-
-        logMessage('Tarama tamamlandı.');
-
-    } catch (error) {
-        setConnectedState(false);
-        setStatus('Bağlantı başarısız');
-
-        if (error.name === 'NotFoundError') {
-            logMessage(
-                'İşlem iptal edildi veya cihaz seçilmedi.'
-            );
-
-        } else if (error.name === 'SecurityError') {
-            logMessage(
-                'Güvenlik hatası: Sayfa HTTPS üzerinden açılmalıdır.'
-            );
-
-        } else if (error.name === 'NetworkError') {
-            logMessage(
-                'GATT bağlantısı kurulamadı.'
-            );
-
-            logMessage(
-                'Cihaz başka bir uygulamaya bağlı olabilir.'
-            );
-
-        } else {
-            logMessage(
-                `HATA [${error.name || 'Bilinmeyen'}]: ` +
-                `${error.message || error}`
-            );
-        }
+        await readBattery(server);
 
         if (
-            bluetoothDevice &&
-            bluetoothDevice.gatt &&
-            bluetoothDevice.gatt.connected
+            typeof bluetoothDevice.watchAdvertisements === 'function'
         ) {
-            bluetoothDevice.gatt.disconnect();
+            logMessage('BLE reklam paketleri dinleniyor...');
+
+            await bluetoothDevice.watchAdvertisements();
+
+            logMessage(
+                'Reklam dinleme aktif. Sensörden veri bekleniyor...'
+            );
+        } else {
+            logMessage(
+                'HATA: Bu Chrome sürümü watchAdvertisements özelliğini desteklemiyor.'
+            );
+
+            logMessage(
+                'Bu sensörde sıcaklık ve nem GATT servisinde değil, reklam paketindedir.'
+            );
+        }
+
+    } catch (error) {
+        logMessage(
+            `HATA [${error.name || 'Bilinmeyen'}]: ` +
+            `${error.message || error}`
+        );
+
+        setConnectedState(false);
+    }
+}
+
+async function readBattery(server) {
+    try {
+        const batteryService =
+            await server.getPrimaryService(
+                BATTERY_SERVICE_UUID
+            );
+
+        const batteryCharacteristic =
+            await batteryService.getCharacteristic(
+                BATTERY_CHARACTERISTIC_UUID
+            );
+
+        const value =
+            await batteryCharacteristic.readValue();
+
+        const battery =
+            value.getUint8(0);
+
+        document.getElementById('battery').innerText =
+            `% ${battery}`;
+
+        logMessage(`Pil seviyesi: %${battery}`);
+
+    } catch (error) {
+        logMessage(
+            'Pil seviyesi okunamadı: ' + error.message
+        );
+    }
+}
+
+function handleAdvertisement(event) {
+    logMessage('Reklam paketi alındı.');
+
+    logMessage(
+        'RSSI: ' +
+        (
+            event.rssi !== null &&
+            event.rssi !== undefined
+                ? event.rssi + ' dBm'
+                : 'bilinmiyor'
+        )
+    );
+
+    event.serviceData.forEach((value, uuid) => {
+        logMessage(
+            `Servis verisi ${uuid}: ${bytesToHex(value)}`
+        );
+
+        parseXiaomiServiceData(value);
+    });
+
+    event.manufacturerData.forEach((value, companyId) => {
+        logMessage(
+            `Üretici verisi ${companyId}: ${bytesToHex(value)}`
+        );
+
+        parseXiaomiServiceData(value);
+    });
+}
+
+function parseXiaomiServiceData(value) {
+    /*
+      MJ_HT_V1 reklam paketlerinin sürüme göre yapısı değişebilir.
+      Bu bölüm yaygın Xiaomi MiBeacon veri tiplerini arar.
+
+      0x1004 = sıcaklık
+      0x1006 = nem
+      0x100A = pil
+      0x100D = sıcaklık + nem
+    */
+
+    for (let i = 0; i < value.byteLength - 4; i++) {
+        const type =
+            value.getUint16(i, true);
+
+        const length =
+            value.getUint8(i + 2);
+
+        if (type === 0x1004 && length >= 2) {
+            const temperature =
+                value.getInt16(i + 3, true) / 10;
+
+            document.getElementById('temp').innerText =
+                `${temperature.toFixed(1)} °C`;
+
+            logMessage(
+                `Sıcaklık bulundu: ${temperature.toFixed(1)} °C`
+            );
+        }
+
+        if (type === 0x1006 && length >= 2) {
+            const humidity =
+                value.getUint16(i + 3, true) / 10;
+
+            document.getElementById('humidity').innerText =
+                `% ${humidity.toFixed(1)}`;
+
+            logMessage(
+                `Nem bulundu: %${humidity.toFixed(1)}`
+            );
+        }
+
+        if (type === 0x100A && length >= 1) {
+            const battery =
+                value.getUint8(i + 3);
+
+            document.getElementById('battery').innerText =
+                `% ${battery}`;
+
+            logMessage(
+                `Pil bulundu: %${battery}`
+            );
+        }
+
+        if (type === 0x100D && length >= 4) {
+            const temperature =
+                value.getInt16(i + 3, true) / 10;
+
+            const humidity =
+                value.getUint16(i + 5, true) / 10;
+
+            document.getElementById('temp').innerText =
+                `${temperature.toFixed(1)} °C`;
+
+            document.getElementById('humidity').innerText =
+                `% ${humidity.toFixed(1)}`;
+
+            logMessage(
+                `Sıcaklık: ${temperature.toFixed(1)} °C, ` +
+                `Nem: %${humidity.toFixed(1)}`
+            );
         }
     }
 }
 
-function disconnectDevice() {
+function disconnectSensor() {
     if (
         bluetoothDevice &&
         bluetoothDevice.gatt &&
@@ -478,10 +365,14 @@ function disconnectDevice() {
 function handleDisconnected() {
     logMessage('Cihaz bağlantısı kesildi.');
 
-    gattServer = null;
-
     setConnectedState(false);
-    setStatus('Bağlı değil');
+
+    if (bluetoothDevice) {
+        bluetoothDevice.removeEventListener(
+            'advertisementreceived',
+            handleAdvertisement
+        );
+    }
 }
 </script>
 
